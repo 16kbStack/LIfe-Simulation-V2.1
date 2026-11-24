@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuroevolution Life Simulation v2</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Dann.js Artificial Neural Network Library -->
+    <script src="https://cdn.jsdelivr.net/gh/matiasvlevi/dann@v2.4.1e/build/dann.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+            user-select: none;
+        }
+        canvas {
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.7), 0 0 15px rgba(59, 130, 246, 0.1);
+            background: radial-gradient(circle at center, #131b2e 0%, #0d121f 100%);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between p-2 md:p-6 custom-scrollbar">
+
+    <!-- Header Title Bar -->
+    <header class="w-full max-w-6xl mb-4 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-900/80 p-4 rounded-xl border border-slate-800 backdrop-blur">
+        <div>
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent flex items-center gap-2">
+                <i class="fa-solid fa-dna text-blue-400"></i> Evolution Simulation v2.1
+            </h1>
+            <p class="text-xs text-slate-400 mt-1">
+                Evolution Simulation using <span class="text-indigo-300 font-mono">Dann.js</span> neural networks evolved via genetic algorithm with Tournament Selection.
+            </p>
+        </div>
+        
+        <!-- Quick Action Buttons -->
+        <div class="flex items-center gap-2 flex-wrap">
+            <button id="btnResetGen" class="px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow">
+                <i class="fa-solid fa-rotate-right"></i> Reset Pop
+            </button>
+            <button id="btnSpawnFood" class="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow">
+                <i class="fa-solid fa-apple-whole"></i> +10 Food
+            </button>
+            <button id="btnSpawnPoison" class="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow">
+                <i class="fa-solid fa-skull-crossbones"></i> +10 Poison
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace: Canvas + Side Statistics/Controls -->
+    <main class="w-full max-w-6xl flex flex-col lg:flex-row gap-6 items-start">
+
+        <!-- Simulation Canvas Container -->
+        <div class="relative w-full lg:w-3/4 flex flex-col items-center">
+            <div class="relative w-full rounded-2xl overflow-hidden border border-slate-800">
+                <canvas id="simCanvas" width="800" height="520" class="w-full h-auto cursor-crosshair block"></canvas>
+                
+                <!-- Canvas Overlay Instructions -->
+                <div class="absolute bottom-3 left-3 bg-slate-950/70 backdrop-blur px-3 py-1.5 rounded-lg text-[11px] text-slate-300 border border-slate-800/80 pointer-events-none flex items-center gap-2">
+                    <span><i class="fa-solid fa-mouse-pointer text-blue-400"></i> Left Click: Drop selected item</span>
+                    <span class="text-slate-600">|</span>
+                    <span><i class="fa-solid fa-hand text-amber-400"></i> Right Click: Spawn Creature</span>
+                </div>
+            </div>
+
+            <!-- Simulation Controls Dashboard -->
+            <div class="w-full mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+                    <label class="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                        Placement Mode
+                    </label>
+                    <div class="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+                        <button id="modeFood" class="flex-1 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white transition-all">Food</button>
+                        <button id="modePoison" class="flex-1 py-1 text-xs font-medium text-slate-400 transition-all">Poison</button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+                    <label class="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                        Speed Multiplier (<span id="speedVal" class="text-blue-400 font-bold">1x</span>)
+                    </label>
+                    <input type="range" id="speedSlider" min="1" max="10" value="1" step="1" class="w-full accent-blue-500 bg-slate-950 rounded-lg cursor-pointer h-2 mt-2">
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl">
+                    <label class="text-[11px] uppercase tracking-wider font-semibold text-slate-400 block mb-1">
+                        Target Pop Size
+                    </label>
+                    <div class="flex items-center gap-2">
+                        <input type="number" id="popInput" value="25" min="5" max="100" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs text-center font-bold text-slate-200">
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/90 border border-slate-800 p-3 rounded-xl flex items-center justify-between">
+                    <div>
+                        <div class="text-[11px] uppercase tracking-wider font-semibold text-slate-400">Simulation</div>
+                        <div id="statusTag" class="text-xs font-bold text-emerald-400 flex items-center gap-1 mt-0.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Running
+                        </div>
+                    </div>
+                    <button id="btnPause" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-all">
+                        <i class="fa-solid fa-pause" id="pauseIcon"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics & Genetic Parameters Panel -->
+        <div class="w-full lg:w-1/4 flex flex-col gap-4">
+            
+            <!-- Realtime Metrics -->
+            <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-xl shadow-lg">
+                <h2 class="text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-indigo-400"></i> Generation Analytics
+                </h2>
+		
+		<!-- Top Evolved Creatures Leaderboard -->
+<div class="bg-slate-900/90 border border-slate-800 p-4 rounded-xl shadow-lg">
+    <h2 class="text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2 mb-3 flex items-center justify-between">
+        <span class="flex items-center gap-2">
+            <i class="fa-solid fa-trophy text-amber-400"></i> Top Performers
+        </span>
+        <span class="text-[10px] uppercase font-mono tracking-wider text-slate-500">Fitness</span>
+    </h2>
+
+    <!-- This container will be dynamically populated by JavaScript -->
+    <div id="leaderboardContainer" class="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+        <!-- Template row (for structural reference, JavaScript will replace this) -->
+        <div class="flex justify-between items-center bg-slate-950/40 p-2 rounded-lg border border-slate-800/40">
+            <span class="text-xs font-mono font-medium text-indigo-300">Alpha-Prime</span>
+            <span class="text-xs font-bold text-slate-300">0</span>
+        </div>
+    </div>
+</div>
+	
+		
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400">Generation</span>
+                        <span id="statGen" class="text-base font-extrabold text-blue-400">1</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400">Survivors</span>
+                        <span id="statAlive" class="text-sm font-bold text-emerald-400">25 / 25</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400">Best Score (All Time)</span>
+                        <span id="statBestEver" class="text-sm font-bold text-amber-400">0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400">Current Best Score</span>
+                        <span id="statCurrentBest" class="text-sm font-bold text-indigo-300">0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400">Avg Generation Score</span>
+                        <span id="statAvgScore" class="text-sm font-bold text-slate-300">0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs text-slate-400">Active Mutation Rate</span>
+                        <span id="statMutRate" class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">12.0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Evolutionary Mechanics Breakdown -->
+            <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-xl shadow-lg">
+                <h2 class="text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2 mb-3 flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-emerald-400"></i> Anti Dumbness Fix: low effort = 0~ rewards
+                </h2>
+                
+                <ul class="text-xs text-slate-300 space-y-2">
+                    <li class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-emerald-400 mt-0.5"></i>
+                        <span><strong>Tournament Selection:</strong> Top performer of 3 random candidates selected as parent.</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-emerald-400 mt-0.5"></i>
+                        <span><strong>Random Immigrants:</strong> 20% of new generation contains fresh random DNA.</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-emerald-400 mt-0.5"></i>
+                        <span><strong>Adaptive Mutation:</strong> Mutation rate automatically spikes when fitness stagnates.</span>
+                    </li>
+                    <li class="flex items-start gap-2">
+                        <i class="fa-solid fa-check text-emerald-400 mt-0.5"></i>
+                        <span><strong>Survival& Distance Rewards:</strong> Fitness gains continuously reward movement toward food.</span>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Neural Network Architecture Info -->
+            <div class="bg-slate-900/90 border border-slate-800 p-4 rounded-xl shadow-lg">
+                <h2 class="text-sm font-semibold text-slate-200 border-b border-slate-800 pb-2 mb-2 flex items-center gap-2">
+                    <i class="fa-solid fa-brain text-purple-400"></i> Neural Topology
+                </h2>
+                <div class="text-[11px] text-slate-400 space-y-1 font-mono">
+                    <div>Inputs (5): [Food ΔX, Food ΔY, Poison ΔX, Poison ΔY, ScoreCount]</div>
+                    <div>Hidden (1 Layer): 24 Neurons (LeakyReLU)</div>
+                    <div>Outputs (12): [X Velocity, Y Velocity, X Rotation, Y Rotation] (TanH)</div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        window.onload = function() {
+            // --- CANVAS SETUP ---
+            const canvas = document.getElementById('simCanvas');
+            const ctx = canvas.getContext('2d');
+
+            // --- UI ELEMENTS ---
+            const statGen = document.getElementById('statGen');
+            const statAlive = document.getElementById('statAlive');
+            const statBestEver = document.getElementById('statBestEver');
+            const statCurrentBest = document.getElementById('statCurrentBest');
+            const statAvgScore = document.getElementById('statAvgScore');
+            const statMutRate = document.getElementById('statMutRate');
+            const speedSlider = document.getElementById('speedSlider');
+            const speedVal = document.getElementById('speedVal');
+            const popInput = document.getElementById('popInput');
+	    const epopInput = document.getElementById('epopInput');
+            const btnPause = document.getElementById('btnPause');
+            const pauseIcon = document.getElementById('pauseIcon');
+            const statusTag = document.getElementById('statusTag');
+            const modeFoodBtn = document.getElementById('modeFood');
+            const modePoisonBtn = document.getElementById('modePoison');
+	    // Pools to construct names from
+const namePrefixes = ["Desirae","Alexander","Emerson","Amir","Robin","Elia","Katrina","Kyla","Lorelai","Charleigh","Nariah","Mercedes","Toby","Nathalie","Luz","Janae","Dyson","Kimora","Presleigh","Andreas"];
+const nameSuffixes = ["Prescott","Porter","Grimm","Lopez","Morton","Cortes","Hutton","Fields","Eddy","Rodriguez","Walsh","Barr","Yarbrough","Rodrigues","Mathis","Roman","Moser","Barajas","Patton","Daniel"];
+
+// Keeps track of active names currently in the simulation
+const activeNames = new Set();
+
+function generateUniqueName() {
+    let iterations = 0;
+    const maxAttempts = 1000;
+
+    while (iterations < maxAttempts) {
+        const pre = namePrefixes[Math.floor(Math.random() * namePrefixes.length)];
+        const suf = nameSuffixes[Math.floor(Math.random() * nameSuffixes.length)];
+        const generatedName = `${pre}-${suf}`;
+
+        // If the name is not currently used, register and return it
+        if (!activeNames.has(generatedName)) {
+            activeNames.add(generatedName);
+            return generatedName;
+        }
+        iterations++;
+    }
+}
+
+// Call this when a creature dies to free up the name pool
+function releaseName(name) {
+    activeNames.delete(name);
+}
+
+
+            // --- GLOBAL CONSTANTS & SIMULATION STATE ---
+            let POPULATION_SIZE = parseInt(popInput.value) || 25;
+            let FOOD_COUNT = 25;
+            let POISON_COUNT = 60;	
+
+            let creatures = [];
+            let food = [];
+            let poison = [];
+            let particles = []; // Particle effects for eating/dying
+
+            let generationCount = 1;
+            let bestScoreEver = 0;
+            let isPaused = false;
+            let simSpeed = 1;
+            let clickMode = 'food'; // 'food' or 'poison'
+
+            // Dynamic Adaptive Evolutionary Parameters
+            let baseMutationRate = 0.122;
+            let currentMutationRate = baseMutationRate;
+
+            class Particle {
+                constructor(x, y, color) {
+                    this.x = x;
+                    this.y = y;
+                    this.color = color;
+                    this.vx = (Math.random() - 0.5) * 4;
+                    this.vy = (Math.random() - 0.5) * 4;
+                    this.alpha = 1.0;
+                    this.radius = Math.random() * 3 + 1;
+                    this.rotationX = x + this.radius * Math.cos(45)
+                    this.rotationY = y + this.radius * Math.sin(45)
+                }
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.alpha -= 0.04;
+                }
+                draw() {
+                    ctx.save();
+                    ctx.globalAlpha = Math.max(0, this.alpha);
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+                }
+            }
+
+            function createSparks(x, y, color, count = 8) {
+                for (let i = 0; i < count; i++) {
+                    particles.push(new Particle(x, y, color));
+                }
+            }
+
+            function spawnFood() {
+                return { x: 30 + Math.random() * (canvas.width - 60), y: 30 + Math.random() * (canvas.height - 60) };
+            }
+
+            function spawnPoison() {
+                return { x: 30 + Math.random() * (canvas.width - 60), y: 30 + Math.random() * (canvas.height - 60) };
+            }
+
+            function initEnvironment() {
+                food = [];
+                poison = [];
+                for (let i = 0; i < FOOD_COUNT; i++) food.push(spawnFood());
+                for (let i = 0; i < POISON_COUNT; i++) poison.push(spawnPoison());
+            }
+
+            class Creature {
+                constructor(brain = null) {
+                    this.x = Math.random() * (canvas.width - 40) + 20;
+                    this.y = Math.random() * (canvas.height - 40) + 20;
+                    this.energy = 100;
+                    this.score = 0;
+                    this.vx = 0;
+		    this.fitness = 0;
+                    this.vy = 0;
+                    this.radius = 7;
+                    this.age = 0;
+		    this.name = generateUniqueName();
+
+                    if (brain) {
+                        this.brain = brain;
+                    } else {
+                        this.brain = new Dann(6, 6);
+                        this.brain.addHiddenLayer(480, 'leakyReLU');
+                        this.brain.outputActivation('tanH'); 
+                        this.brain.makeWeights();
+                    }
+                }
+		
+			
+	
+              		think() {
+                    // 1. Calculate distance to nearest Food
+                    let closestFood = null;
+                    let minDistFood = Infinity;
+			
+                    for (let f of food) {
+                        let d = Math.hypot(f.x - this.x, f.y - this.y);
+                        if (d < minDistFood) {
+                            minDistFood = d;
+                            closestFood = f;
+                        }
+                    }
+
+                    // 2. Calculate distance to nearest Poison
+                    let closestPoison = null;
+                    let minDistPoison = Infinity;
+                    for (let p of poison) {
+                        let dp = Math.hypot(p.x - this.x, p.y - this.y);
+                        if (dp < minDistPoison) {
+                            minDistPoison = dp;
+                            closestPoison = p;
+                        }
+                    }
+
+                    // Safety default if no food or poison left
+                    let foodDx = 0, foodDy = 0;
+                    let poisonDx = 0, poisonDy = 0;
+
+                    if (closestFood) {
+                        foodDx = (closestFood.x - this.x) / canvas.width;
+                        foodDy = (closestFood.y - this.y) / canvas.height;
+                    }
+
+                    if (closestPoison) {
+                        poisonDx = (closestPoison.x - this.x) / canvas.width;
+                        poisonDy = (closestPoison.y - this.y) / canvas.height;
+                    }
+
+                    // 3. Feedforward Neural Inference
+                    let output = this.brain.feedForward([foodDx, foodDy, poisonDx, poisonDy, this.score, this.energy]);
+
+                    // Extract motor velocity
+			let vel1 = 6.5
+			let vel2 = 3.5
+			let vel3 = -vel2 + random(10, 20)
+			let placeHolder = 0
+			
+		
+                    this.vx = output[0] * vel1;
+                    this.vy = output[1] * vel1;
+                    this.vx = output[1], [0] * vel3;
+                    this.vy = output[0], [1] * vel3;
+		    this.vx = output[0], [1], [0] * vel2;
+		    this.vy = output[1], [0], [1] * vel2;
+		    this.rotationX = output[1], [1], [1] * vel2;
+	            this.rotationY = output[0], [0], [0] * vel2;
+                    this.rotationX = output[1], [1] * vel3;
+                    this.rotationY = output[0], [0] * vel3;
+                    this.rotationX = output[0], [1], [1] * vel1;
+                    this.rotationY = output[0], [0], [1] * vel1;
+		    this.rotationX = output[0], [1], [0] / vel1;
+		    this.rotationX = output[1], [1], [0] / vel1;
+		    this.rotationY = output[1], [1], [1] / vel1;
+		    this.rotationY = output[1], [0], [1] / vel1;
+		
+                    // Save position before moving for delta reward
+                    let oldDistToFood = minDistFood;
+
+                    // 4. Update Position & rotation cus else movement aint very sophisticated
+		
+			
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    this.rotationX += this.rotationX
+                    this.rotationY += this.rotationY
+                    this.age++;
+
+                    // 5. Continuous Fitness Rewards & Penalties
+                    // A. Baseline Survival Reward
+                    this.score += 0.075;
+
+                    // B. Reward for closing distance to nearest food
+                    let newDistToFood = closestFood ? Math.hypot(closestFood.x - this.x, closestFood.y - this.y) : oldDistToFood;
+                    if (newDistToFood < oldDistToFood) {
+                        this.score += 0.1; // Reward moving closer to food
+                    } else {
+                        this.score -= 0.3; // Penalty for moving away
+                    }
+
+                    // C. Border penalty (Prevents wall rush loop and low effort 0 reward)
+                    if (this.x <= 15 || this.x >= canvas.width - 15 || this.y <= 15 || this.y >= canvas.height - 15) {
+                        this.score -= 0.98;
+                        this.energy -= 0.82; // Extra strain on boundary
+                    }
+
+                    // Metabolic energy loss
+                    this.energy -= 0.15;
+
+                    // Clamp position within bounds
+                    this.x = Math.max(10, Math.min(canvas.width - 10, this.x));
+                    this.y = Math.max(10, Math.min(canvas.height - 10, this.y));
+
+                    // 6. Food Interaction
+                    if (closestFood && minDistFood < (this.radius + 6)) {
+                        this.energy = Math.min(100, this.energy + 45);
+                        this.score += 60; // Major reward
+                        createSparks(closestFood.x, closestFood.y, '#10b981', 10);
+                        let idx = food.indexOf(closestFood);
+                        if (idx > -1) food[idx] = spawnFood();
+                    }
+
+                    // 7. Poison Interaction
+                    if (closestPoison && minDistPoison < (this.radius + 6)) {
+                        this.energy -= 25;
+                        this.score -= 15; // Major penalty
+                        createSparks(closestPoison.x, closestPoison.y, '#f43f5e', 10);
+                        let idx = poison.indexOf(closestPoison);
+                        if (idx > -1) poison[idx] = spawnPoison();
+                    }
+
+			 updateLeaderboard(creatures);
+                }
+
+                draw() {
+                    ctx.save();
+
+                    // Calculate Health/Energy Color (Red -> Yellow -> Green)
+                    let normalizedEnergy = Math.max(0, Math.min(1, this.energy / 100));
+                    let hue = normalizedEnergy * 120; // 0 is Red, 120 is Green
+                    let fillColor = `hsl(${hue}, 90%, 50%)`;
+
+                    // Draw Velocity Vector / Orientation Line
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(this.x + this.vx * 3, this.y + this.vy * 3);
+                    ctx.stroke();
+
+                    // Creature Body Glow
+                    ctx.shadowColor = fillColor;
+                    ctx.shadowBlur = 8;
+
+                    // Creature Circle Body
+                    ctx.fillStyle = fillColor;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+
+		    ctx.fillStyle = "rgba(243, 244, 246, 0.8)"; // Text color (slate-200)
+   		    ctx.font = "10px monospace";
+                    ctx.textAlign = "center";
+   		    ctx.fillText(this.name, this.x, this.y - 12);
+
+                    // Core Dot
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.restore();
+                }
+            }
+
+            // Tournament Selection instead of pure elitism: Picks 3 random creatures and returns the one with the highest score
+            function selectParentViaTournament(pool) {
+                let tournamentSize = 3;
+                let best = null;
+                for (let i = 0; i < tournamentSize; i++) {
+                    let randIndex = Math.floor(Math.random() * pool.length);
+                    let candidate = pool[randIndex];
+                    if (!best || candidate.score > best.score) {
+                        best = candidate;
+                    }
+                }
+                return best;
+            }
+
+            function reproduceNextGeneration() {
+                generationCount++;
+
+                // Sort full previous generation by score (descending)
+                creatures.sort((a, b) => b.score - a.score);
+
+                let topScoreThisGen = creatures[0].score;
+                if (topScoreThisGen > bestScoreEver) {
+                    bestScoreEver = topScoreThisGen;
+                }
+
+                // ADAPTIVE MUTATION CHECK:
+                // If top performer failed to gain positive score, spike mutation to force diversification
+                if (topScoreThisGen <= 2) {
+                    currentMutationRate = 0.432; // High mutation rate to kickstart learning
+                } else {
+                    currentMutationRate = baseMutationRate; // Standard 12% mutation
+                }
+
+                let nextGen = [];
+
+                // 1. ELITISM: Copy top 1 survivor unchanged
+                let eliteBrain = creatures[0].brain;
+                nextGen.push(new Creature(eliteBrain));
+
+                // 2. RANDOM IMMIGRANTS (~20% of new population gets fresh random DNA)
+                let immigrantCount = Math.floor(POPULATION_SIZE * 0.22);
+
+                // 3. BREEDING REST OF POPULATION (using Tournament Selection)
+                let remainingCount = POPULATION_SIZE - 1 - immigrantCount;
+
+                for (let i = 0; i < remainingCount; i++) {
+                    let parent = selectParentViaTournament(creatures);
+                    let childBrain = Dann.createFromJSON(parent.brain.toJSON());
+
+                    // Apply mutation with active adaptive rate
+                    childBrain.mutateRandom(currentMutationRate, 0.14);
+                    nextGen.push(new Creature(childBrain));
+                }
+
+                // Add Immigrant
+                for (let i = 0; i < immigrantCount; i++) {
+                    nextGen.push(new Creature());
+                }
+
+                creatures = nextGen;
+
+                // Respawn environment items for fair generation start
+                initEnvironment();
+            }
+
+            // Initialize Population
+            function initPopulation() {
+                creatures = [];
+                for (let i = 0; i < POPULATION_SIZE; i++) {
+                    creatures.push(new Creature());
+                }
+            }
+
+            function drawGrid() {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+                ctx.lineWidth = 1;
+                let gridSize = 40;
+
+                for (let x = 0; x < canvas.width; x += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, canvas.height);
+                    ctx.stroke();
+                }
+                for (let y = 0; y < canvas.height; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(canvas.width, y);
+                    ctx.stroke();
+                }
+            }
+
+            function renderEnvironment() {
+                // Draw Food (Emerald/Green Glow)
+                ctx.save();
+                ctx.shadowColor = '#10b981';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#10b981';
+                for (let f of food) {
+                    ctx.beginPath();
+                    ctx.arc(f.x, f.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+
+                // Draw Poison (Crimson/Magenta Glow)
+                ctx.save();
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#f43f5e';
+                for (let p of poison) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
+
+                // Draw Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw();
+                    if (particles[i].alpha <= 0) particles.splice(i, 1);
+                }
+            }
+
+            function updateSimulationStep() {
+                let aliveCount = 0;
+                let currentMaxScore = -Infinity;
+                let scoreSum = 0;
+
+                for (let c of creatures) {
+                    if (c.energy > 0) {
+                        c.think();
+                        aliveCount++;
+                    } else if (c.energy <= 0 && c.energy > -100) {
+                        // Trigger death visual effect once
+                        createSparks(c.x, c.y, '#94a3b8', 6);
+                        c.energy = -999; // Flag as dead processed
+			releaseName(this.name)
+                    }
+
+                    if (c.score > currentMaxScore) currentMaxScore = c.score;
+                    scoreSum += c.score;
+                }
+
+                // If all creatures dead, trigger next generation evolution
+                if (aliveCount === 0) {
+                    reproduceNextGeneration();
+                }
+
+                return { aliveCount, currentMaxScore, avgScore: scoreSum / creatures.length };
+            }
+
+            function updateUIHUD(aliveCount, currentMaxScore, avgScore) {
+                statGen.innerText = generationCount;
+                statAlive.innerText = `${aliveCount} / ${POPULATION_SIZE}`;
+                statBestEver.innerText = bestScoreEver.toFixed(2);
+                statCurrentBest.innerText = (currentMaxScore === -Infinity ? 0 : currentMaxScore).toFixed(2);
+                statAvgScore.innerText = avgScore.toFixed(2);
+                statMutRate.innerText = `${(currentMutationRate * 100).toFixed(1)}%`;
+            }
+
+            function mainGameLoop() {
+                if (!isPaused) {
+                    let lastStats = null;
+                    // Execute speed multiplier physics iterations per frame
+                    for (let step = 0; step < simSpeed; step++) {
+                        lastStats = updateSimulationStep();
+                    }
+
+                    // Render Frame
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    drawGrid();
+                    renderEnvironment();
+
+                    // Render Creatures
+                    for (let c of creatures) {
+                        if (c.energy > 0) {
+                            c.draw();
+                        }
+                    }
+
+                    if (lastStats) {
+                        updateUIHUD(lastStats.aliveCount, lastStats.currentMaxScore, lastStats.avgScore);
+                    }
+                }
+
+                requestAnimationFrame(mainGameLoop);
+            }
+
+            // Speed Controller
+            speedSlider.addEventListener('input', (e) => {
+                simSpeed = parseInt(e.target.value);
+                speedVal.innerText = `${simSpeed}x`;
+            });
+
+            // Target Population Adjustment
+            popInput.addEventListener('change', (e) => {
+                let val = parseInt(e.target.value);
+                if (val >= 5 && val <= 100) {
+                    POPULATION_SIZE = val;
+                }
+            });
+	    
+            // Mode Selector
+            modeFoodBtn.addEventListener('click', () => {
+                clickMode = 'food';
+                modeFoodBtn.className = 'flex-1 py-1 text-xs font-medium rounded-md bg-emerald-600 text-white transition-all';
+                modePoisonBtn.className = 'flex-1 py-1 text-xs font-medium text-slate-400 transition-all';
+            });
+
+            modePoisonBtn.addEventListener('click', () => {
+                clickMode = 'poison';
+                modePoisonBtn.className = 'flex-1 py-1 text-xs font-medium rounded-md bg-rose-600 text-white transition-all';
+                modeFoodBtn.className = 'flex-1 py-1 text-xs font-medium text-slate-400 transition-all';
+            });
+
+            // Pause Button
+            btnPause.addEventListener('click', () => {
+                isPaused = !isPaused;
+                if (isPaused) {
+                    pauseIcon.className = 'fa-solid fa-play';
+                    statusTag.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Paused`;
+                    statusTag.className = 'text-xs font-bold text-amber-400 flex items-center gap-1 mt-0.5';
+                } else {
+                    pauseIcon.className = 'fa-solid fa-pause';
+                    statusTag.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Running`;
+                    statusTag.className = 'text-xs font-bold text-emerald-400 flex items-center gap-1 mt-0.5';
+                }
+            });
+
+            // Manual Population Reset
+            document.getElementById('btnResetGen').addEventListener('click', () => {
+                generationCount = 1;
+                bestScoreEver = 0;
+                initEnvironment();
+                initPopulation();
+            });
+
+            // Batch Spawn Buttons
+            document.getElementById('btnSpawnFood').addEventListener('click', () => {
+                for (let i = 0; i < 10; i++) food.push(spawnFood());
+            });
+
+            document.getElementById('btnSpawnPoison').addEventListener('click', () => {
+                for (let i = 0; i < 10; i++) poison.push(spawnPoison());
+            });
+
+            // Canvas Click Mechanics (Drop Food/Poison or Spawn Creature on Right-click)
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (e.clientX - rect.left) * scaleX;
+                const y = (e.clientY - rect.top) * scaleY;
+
+                if (clickMode === 'food') {
+                    food.push({ x, y });
+                    createSparks(x, y, '#10b981', 5);
+                } else {
+                    poison.push({ x, y });
+                    createSparks(x, y, '#f43f5e', 5);
+                }
+            });
+
+            canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const x = (e.clientX - rect.left) * scaleX;
+                const y = (e.clientY - rect.top) * scaleY;
+
+                let newCreature = new Creature();
+                newCreature.x = x;
+                newCreature.y = y;
+                creatures.push(newCreature);
+                createSparks(x, y, '#3b82f6', 8);
+            });
+
+
+function updateLeaderboard(creaturesArray) {
+    const container = document.getElementById('leaderboardContainer');
+    if (!container) return;
+
+    // 1. Sort creatures by fitness descending and grab the top 5
+    const topCreatures = [...creaturesArray]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+
+    // 2. Clear out the old leaderboard entries
+    container.innerHTML = '';
+
+    // 3. Generate new styled elements for the leaders
+    topCreatures.forEach((creature, index) => {
+        const row = document.createElement('div');
+        row.className = "flex justify-between items-center bg-slate-950/60 p-2 rounded-lg border border-slate-800/60 hover:border-indigo-500/30 transition-colors";
+        
+        // Define rank badge styles (Gold, Silver, Bronze, and defaults)
+        const rankColors = ["text-amber-400", "text-slate-300", "text-amber-600", "text-slate-500", "text-slate-600"];
+        const rankColor = rankColors[index] || "text-slate-600";
+
+        row.innerHTML = `
+            <div class="flex items-center gap-2 min-w-0">
+                <span class="text-[10px] font-bold ${rankColor} w-4">${index + 1}.</span>
+                <span class="text-xs font-mono font-medium text-slate-200 truncate">${creature.name}</span>
+            </div>
+            <span class="text-xs font-bold font-mono text-emerald-400">${Math.floor(creature.score)}</span>
+        `;
+        
+        container.appendChild(row);
+    });
+}
+
+
+            // START THE SIMULATION
+            initEnvironment();
+            initPopulation();
+            mainGameLoop();
+        };
+    </script>
+</body>
+</html>
